@@ -1,5 +1,5 @@
 // Magnetism Lab offline support. Change VERSION on every release so phones pick up the new copy.
-const VERSION = 'mlab-0.2';
+const VERSION = 'mlab-0.3';
 const FILES = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(VERSION).then(c => c.addAll(FILES)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => {

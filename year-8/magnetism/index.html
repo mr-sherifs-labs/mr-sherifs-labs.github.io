@@ -80,6 +80,9 @@ button{font-family:inherit}
 .side-foot{margin-top:auto;display:flex;flex-direction:column;gap:10px}
 .fs-btn{font:700 15px/1 var(--font-body);color:var(--ink);background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:12px;cursor:pointer}
 .version{font-size:12px;color:var(--muted);margin:0}
+.vibe{display:flex;align-items:center;gap:8px;font-weight:700;font-size:14px;cursor:pointer;padding:4px 2px}
+.vibe input{width:18px;height:18px;accent-color:var(--accent);margin:0}
+.panel-foot.row .sheet-btn{width:auto}
 
 .main{position:relative;min-width:0;min-height:0;display:flex;flex-direction:column}
 .topbar{display:none}
@@ -206,8 +209,9 @@ details ol{margin-top:8px!important}
     </div>
     <div class="side-foot">
       <a class="fs-btn" href="../../" style="text-align:center;text-decoration:none">All labs</a>
+      <label class="vibe" id="vibe-wrap" hidden><input type="checkbox" id="vibe" checked> Vibration</label>
       <button class="fs-btn" id="fs-btn" type="button" hidden>Full screen</button>
-      <p class="version">Magnetism Lab · version 0.2</p>
+      <p class="version">Magnetism Lab · version 0.3</p>
     </div>
   </nav>
   <div class="scrim" id="scrim"></div>
@@ -248,7 +252,7 @@ details ol{margin-top:8px!important}
         <p>A slice through the Earth. The magnet inside has its <strong>south pole</strong> under the geographic North Pole, so it pulls the north end of every compass that way.</p>
         <p>Inside the magnet the field runs from S to N, so every field line is a closed loop.</p>
       </div>
-      <div class="panel-foot"><button class="btn sheet-btn" type="button" data-sheet="sheet-compass">Challenge card &amp; help</button></div>
+      <div class="panel-foot row"><button class="btn sheet-btn" type="button" data-demo>Show me how</button><button class="btn sheet-btn" type="button" data-sheet="sheet-compass">Challenge &amp; help</button></div>
     </aside>
     <div class="sheet" id="sheet-compass" role="dialog" aria-label="Challenge card and help" hidden>
       <div class="sheet-head"><h2>Challenge card</h2><button class="btn" type="button" data-close>Close</button></div>
@@ -332,7 +336,7 @@ details ol{margin-top:8px!important}
           <label class="chip"><input type="checkbox" id="tm-t-feel" checked> Feel the force</label>
         </div>
       </fieldset>
-      <div class="panel-foot"><button class="btn sheet-btn" type="button" data-sheet="sheet-two">Challenge card &amp; help</button></div>
+      <div class="panel-foot row"><button class="btn sheet-btn" type="button" data-demo>Show me how</button><button class="btn sheet-btn" type="button" data-sheet="sheet-two">Challenge &amp; help</button></div>
     </aside>
     <div class="sheet" id="sheet-two" role="dialog" aria-label="Challenge card and help" hidden>
       <div class="sheet-head"><h2>Challenge card</h2><button class="btn" type="button" data-close>Close</button></div>
@@ -375,7 +379,8 @@ const CompassSim = (() => {
   const R = 190, TILT = 11 * Math.PI / 180;
   const MA = 20, MB = 0.62 * R;                         // hidden magnet: radius and half-length
   const MU = { x: -Math.sin(TILT), y: Math.cos(TILT) }; // hidden magnet axis, pointing from its S end to its N end
-  const CR = 34, NL = 26;
+  let CR = 34, NL = 26;
+  const LIFT = 72;                             // on touch screens the compass rides this far (screen pixels) above the fingertip
   const reduce = matchMedia('(prefers-reduced-motion: reduce)');
 
   const state = {
@@ -735,12 +740,108 @@ const CompassSim = (() => {
     }
     drawTrails();
     drawCompass();
+    drawDemo();
+  }
+
+
+  // ---------- opening demo: a pretend finger shows how to use the page ----------
+  const buzz = p => { try { if (!(window.MLAB && window.MLAB.vibe === false) && navigator.vibrate) navigator.vibrate(p); } catch (_) {} };
+  let demo = null;
+  const ease = t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+  const along = (pts, t) => { const [a, b, c] = pts, u = 1 - t; return { x: u * u * a[0] + 2 * u * t * b[0] + t * t * c[0], y: u * u * a[1] + 2 * u * t * b[1] + t * t * c[1] }; };
+  function stopDemo() { demo = null; }
+  // timing: finger fades in, presses, drags, lifts, fades out
+  function demoPhase(e) {
+    const T = 3800;
+    if (e > T) return null;
+    const alpha = Math.min(1, e / 350, (T - e) / 350);
+    const press = e < 400 ? 0 : e < 700 ? (e - 400) / 300 : e < 3000 ? 1 : e < 3300 ? 1 - (e - 3000) / 300 : 0;
+    const k = reduce.matches ? 0 : ease(Math.min(1, Math.max(0, (e - 700) / 2300)));
+    return { alpha, press, k };
+  }
+  function drawFinger(sx, sy, alpha, press) {
+    ctx.save(); ctx.translate(sx, sy);
+    ctx.globalAlpha = alpha * (0.35 + 0.5 * press); ctx.strokeStyle = C.accent; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(0, 0, 10 + 12 * press, 0, Math.PI * 2); ctx.stroke();
+    ctx.globalAlpha = alpha * 0.92; ctx.rotate(-0.55); ctx.translate(0, 4 - 4 * press);
+    ctx.shadowColor = 'rgba(0,0,0,0.25)'; ctx.shadowBlur = 10; ctx.shadowOffsetY = 4;
+    ctx.fillStyle = C.surface; rr(-15, -4, 30, 120, 15); ctx.fill();
+    ctx.shadowColor = 'transparent'; ctx.strokeStyle = C.ink; ctx.lineWidth = 2.5; ctx.stroke();
+    ctx.globalAlpha = alpha * 0.45; ctx.lineWidth = 2;
+    rr(-9, 2, 18, 22, 8); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-8, 52); ctx.lineTo(8, 52); ctx.moveTo(-8, 58); ctx.lineTo(8, 58); ctx.stroke();
+    ctx.restore();
+  }
+  function drawCaption(text, alpha) {
+    ctx.save();
+    const fs = cw < 520 ? 13 : 15;
+    ctx.font = `700 ${fs}px "Atkinson Hyperlegible", "Segoe UI", sans-serif`;
+    const maxW = Math.min(cw - 40, 560), words = text.split(' '), lines = [''];
+    for (const w of words) { const tryL = (lines[lines.length - 1] + ' ' + w).trim(); if (ctx.measureText(tryL).width > maxW && lines[lines.length - 1]) lines.push(w); else lines[lines.length - 1] = tryL; }
+    const lh = fs * 1.35, w = Math.max(...lines.map(l => ctx.measureText(l).width)) + 28, h = lines.length * lh + 16;
+    ctx.globalAlpha = alpha * 0.92; ctx.fillStyle = C.ink; rr(cw / 2 - w / 2, 14, w, h, 12); ctx.fill();
+    ctx.globalAlpha = alpha; ctx.fillStyle = C.paper; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    lines.forEach((l, i) => ctx.fillText(l, cw / 2, 14 + 8 + lh * (i + 0.5)));
+    ctx.restore();
+  }
+  function drawDemo() {
+    if (!demo || !demo.f) return;
+    ctx.save(); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawFinger(cw / 2 + demo.f.x * scale, ch / 2 + demo.f.y * scale, demo.ph.alpha, demo.ph.press);
+    drawCaption(demo.text, demo.ph.alpha);
+    ctx.restore();
+  }
+
+  const DEMO = {
+    bar: { text: 'Drag anywhere on the sheet. The compass follows your finger, so you can watch the needle.', path: [[255, -125], [270, 10], [215, 125]] },
+    earth: { text: 'Drag anywhere to move the compass around the Earth and onto the globe.', path: [[330, -150], [215, -30], [95, -60]] }
+  };
+  function playDemo() {
+    const d = DEMO[state.mode];
+    state.current = null;
+    state.comp[state.mode] = clampComp(d.path[0][0], d.path[0][1]);
+    // the finger sits below the compass, on the side nearer the middle of the sheet, so it stays on screen
+    demo = { t0: performance.now(), path: d.path, text: d.text, off: { x: d.path[0][0] > 0 ? -105 : 105, y: 105 } };
+  }
+  function demoStep(now) {
+    if (!demo) return;
+    if (typeof simRoot !== 'undefined' && simRoot.hidden) { demo = null; return; }
+    const ph = demoPhase(now - demo.t0);
+    if (!ph) { demo = null; return; }
+    const c = along(demo.path, ph.k);
+    state.comp[state.mode] = clampComp(c.x, c.y);
+    const cc = state.comp[state.mode];
+    demo.ph = ph; demo.f = { x: cc.x + demo.off.x / scale, y: Math.min(cc.y + demo.off.y / scale, H / 2 - 30 / scale) };
+  }
+  // a short buzz each time the dragged compass crosses a field line (phones and tablets that can vibrate)
+  let lastBuzz = 0;
+  function segHits(ax, ay, bx, by, cx, cy, dx, dy) {
+    const den = (bx - ax) * (dy - cy) - (by - ay) * (dx - cx);
+    if (!den) return false;
+    const t = ((cx - ax) * (dy - cy) - (cy - ay) * (dx - cx)) / den, u = ((cx - ax) * (by - ay) - (cy - ay) * (bx - ax)) / den;
+    return t >= 0 && t <= 1 && u >= 0 && u <= 1;
+  }
+  function feelLines(a, b) {
+    if (!navigator.vibrate || (a.x === b.x && a.y === b.y)) return;
+    if (view() === 'face' && (onFace(a.x, a.y) || onFace(b.x, b.y))) return;
+    const minx = Math.min(a.x, b.x), maxx = Math.max(a.x, b.x), miny = Math.min(a.y, b.y), maxy = Math.max(a.y, b.y);
+    let hits = 0;
+    for (const pts of lines) {
+      for (let i = 1; i < pts.length; i++) {
+        const p = pts[i - 1], q = pts[i];
+        if (Math.max(p[0], q[0]) < minx || Math.min(p[0], q[0]) > maxx || Math.max(p[1], q[1]) < miny || Math.min(p[1], q[1]) > maxy) continue;
+        if (segHits(a.x, a.y, b.x, b.y, p[0], p[1], q[0], q[1])) { hits++; break; }
+      }
+    }
+    const now = performance.now();
+    if (hits && now - lastBuzz > 30) { lastBuzz = now; buzz(hits > 1 ? [12, 25, 12] : 14); }
   }
 
   // ---------- needle motion ----------
   let last = performance.now();
   function tick(now) {
     const dt = Math.min(0.05, Math.max(0, (now - last) / 1000)); last = now;
+    demoStep(now);
     const c = state.comp[state.mode], d = needle(c.x, c.y), target = Math.atan2(d.y, d.x);
     if (reduce.matches) { state.theta = target; state.omega = 0; }
     else {
@@ -842,16 +943,20 @@ const CompassSim = (() => {
     return { x: (e.clientX - r.left - cw / 2) / scale, y: (e.clientY - r.top - ch / 2) / scale };
   }
   canvas.addEventListener('pointerdown', e => {
-    const p = toWorld(e), c = state.comp[state.mode];
+    stopDemo();
+    const p = toWorld(e), c = state.comp[state.mode], touch = e.pointerType === 'touch' || e.pointerType === 'pen';
     try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
-    if (Math.hypot(p.x - c.x, p.y - c.y) <= CR + 10) state.dragOff = { x: c.x - p.x, y: c.y - p.y };
-    else { state.dragOff = { x: 0, y: 0 }; place(p.x, p.y); say(''); }
+    const onIt = Math.hypot(p.x - c.x, p.y - c.y) <= CR + (touch ? 22 / scale : 10);
+    if (touch && onIt) { state.dragOff = { x: 0, y: -LIFT / scale }; place(p.x, p.y - LIFT / scale); }  // lift it above the fingertip
+    else if (touch || onIt) state.dragOff = { x: c.x - p.x, y: c.y - p.y };                          // trackpad style: it keeps its distance
+    else { state.dragOff = { x: 0, y: 0 }; place(p.x, p.y); }
+    say('');
     state.dragging = true; state.current = null;
     canvas.style.cursor = 'grabbing';
   });
   canvas.addEventListener('pointermove', e => {
     const p = toWorld(e);
-    if (state.dragging) { place(p.x + state.dragOff.x, p.y + state.dragOff.y); return; }
+    if (state.dragging) { const a = { ...state.comp[state.mode] }; place(p.x + state.dragOff.x, p.y + state.dragOff.y); feelLines(a, state.comp[state.mode]); return; }
     const c = state.comp[state.mode];
     canvas.style.cursor = Math.hypot(p.x - c.x, p.y - c.y) <= CR + 10 ? 'grab' : 'crosshair';
   });
@@ -880,6 +985,8 @@ const CompassSim = (() => {
     dpr = Math.min(2, window.devicePixelRatio || 1);
     canvas.width = Math.round(cw * dpr); canvas.height = Math.round(ch * dpr);
     scale = Math.min(cw / 820, ch / 600); W = cw / scale; H = ch / scale;
+    const big = Math.min(1.8, Math.max(1, 30 / (34 * scale)));   // a bigger compass on small screens
+    CR = 34 * big; NL = 26 * big;
     rebuild();
   }
 
@@ -894,7 +1001,7 @@ const CompassSim = (() => {
   state.theta = Math.atan2(d0.y, d0.x) + 1.2; // start a little off so the needle visibly swings into line
   updateCount();
   requestAnimationFrame(tick);
-  return { setMode };
+  return { setMode, playDemo };
 })();
 
 </script>
@@ -981,8 +1088,8 @@ const TwoSim = (() => {
     }
     return out;
   }
-  function overlap(a, b) {
-    const ca = corners(a, 1), cb = corners(b, 1);
+  function overlap(a, b, pad = 1) {
+    const ca = corners(a, pad), cb = corners(b, pad);
     for (const m of [a, b]) for (const ang of [m.a, m.a + Math.PI / 2]) {
       const ax = Math.cos(ang), ay = Math.sin(ang);
       const pa = ca.map(p => p.x * ax + p.y * ay), pb = cb.map(p => p.x * ax + p.y * ay);
@@ -1253,6 +1360,7 @@ const TwoSim = (() => {
     if (state.showForce) drawForces();
     if (state.showNeutral) drawNeutrals();
     drawBand();
+    drawDemo();
   }
 
   // ---------- motion after "Let go" ----------
@@ -1343,12 +1451,84 @@ const TwoSim = (() => {
     ctx.restore();
   }
 
+
+  // ---------- opening demo: a pretend finger shows how to use the page ----------
+  const buzz = p => { try { if (!(window.MLAB && window.MLAB.vibe === false) && navigator.vibrate) navigator.vibrate(p); } catch (_) {} };
+  let demo = null;
+  const ease = t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+  const along = (pts, t) => { const [a, b, c] = pts, u = 1 - t; return { x: u * u * a[0] + 2 * u * t * b[0] + t * t * c[0], y: u * u * a[1] + 2 * u * t * b[1] + t * t * c[1] }; };
+  function stopDemo() { demo = null; }
+  // timing: finger fades in, presses, drags, lifts, fades out
+  function demoPhase(e) {
+    const T = 3800;
+    if (e > T) return null;
+    const alpha = Math.min(1, e / 350, (T - e) / 350);
+    const press = e < 400 ? 0 : e < 700 ? (e - 400) / 300 : e < 3000 ? 1 : e < 3300 ? 1 - (e - 3000) / 300 : 0;
+    const k = reduce.matches ? 0 : ease(Math.min(1, Math.max(0, (e - 700) / 2300)));
+    return { alpha, press, k };
+  }
+  function drawFinger(sx, sy, alpha, press) {
+    ctx.save(); ctx.translate(sx, sy);
+    ctx.globalAlpha = alpha * (0.35 + 0.5 * press); ctx.strokeStyle = C.accent; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(0, 0, 10 + 12 * press, 0, Math.PI * 2); ctx.stroke();
+    ctx.globalAlpha = alpha * 0.92; ctx.rotate(-0.55); ctx.translate(0, 4 - 4 * press);
+    ctx.shadowColor = 'rgba(0,0,0,0.25)'; ctx.shadowBlur = 10; ctx.shadowOffsetY = 4;
+    ctx.fillStyle = C.surface; rr(-15, -4, 30, 120, 15); ctx.fill();
+    ctx.shadowColor = 'transparent'; ctx.strokeStyle = C.ink; ctx.lineWidth = 2.5; ctx.stroke();
+    ctx.globalAlpha = alpha * 0.45; ctx.lineWidth = 2;
+    rr(-9, 2, 18, 22, 8); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-8, 52); ctx.lineTo(8, 52); ctx.moveTo(-8, 58); ctx.lineTo(8, 58); ctx.stroke();
+    ctx.restore();
+  }
+  function drawCaption(text, alpha) {
+    ctx.save();
+    const fs = cw < 520 ? 13 : 15;
+    ctx.font = `700 ${fs}px "Atkinson Hyperlegible", "Segoe UI", sans-serif`;
+    const maxW = Math.min(cw - 40, 560), words = text.split(' '), lines = [''];
+    for (const w of words) { const tryL = (lines[lines.length - 1] + ' ' + w).trim(); if (ctx.measureText(tryL).width > maxW && lines[lines.length - 1]) lines.push(w); else lines[lines.length - 1] = tryL; }
+    const lh = fs * 1.35, w = Math.max(...lines.map(l => ctx.measureText(l).width)) + 28, h = lines.length * lh + 16;
+    ctx.globalAlpha = alpha * 0.92; ctx.fillStyle = C.ink; rr(cw / 2 - w / 2, 14, w, h, 12); ctx.fill();
+    ctx.globalAlpha = alpha; ctx.fillStyle = C.paper; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    lines.forEach((l, i) => ctx.fillText(l, cw / 2, 14 + 8 + lh * (i + 0.5)));
+    ctx.restore();
+  }
+  function drawDemo() {
+    if (!demo || !demo.f) return;
+    ctx.save(); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawFinger(cw / 2 + demo.f.x * scale, ch / 2 + demo.f.y * scale, demo.ph.alpha, demo.ph.press);
+    drawCaption(demo.text, demo.ph.alpha);
+    ctx.restore();
+  }
+
+  function playDemo() {
+    const b = mags[1], b0 = { x: b.x, y: b.y };
+    setFree(false); clearTrail();
+    demo = { t0: performance.now(), text: 'Drag a magnet to move it. Tap a magnet, then turn it with its round handle.',
+      path: [[b0.x, b0.y], [b0.x - 70, b0.y - 150], [b0.x + 20, b0.y - 110]] };
+  }
+  function demoStep(now) {
+    if (!demo) return;
+    if (typeof simRoot !== 'undefined' && simRoot.hidden) { demo = null; return; }
+    const ph = demoPhase(now - demo.t0);
+    if (!ph) { demo = null; return; }
+    const c = along(demo.path, ph.k), b = mags[1];
+    if (Math.hypot(c.x - b.x, c.y - b.y) > 0.3) tryPlace(b, c.x, c.y, b.a);
+    demo.ph = ph; demo.f = { x: b.x + 14 / scale, y: b.y + 8 / scale };
+  }
+  // a buzz when the magnets bump into each other (phones and tablets that can vibrate)
+  function checkContact() {
+    const t = overlap(mags[0], mags[1], 4);
+    if (t && !state.touching && !demo) buzz(35);
+    state.touching = t;
+  }
+
   let last = performance.now();
   function tick(now) {
     const dt = Math.min(0.033, Math.max(0, (now - last) / 1000)); last = now;
     if (state.drag && state.drag.type === 'move' && state.feel) dragStep(dt);
     if (state.free) step(reduce.matches ? 0.033 : dt);
-    if (state.dirty) rebuild();
+    demoStep(now);
+    if (state.dirty) { rebuild(); checkContact(); }
     if (cw > 0 && !simRoot.hidden) draw();
     requestAnimationFrame(tick);
   }
@@ -1375,6 +1555,7 @@ const TwoSim = (() => {
     const cfg = { ns: [[-190, 0, 0], [190, 0, 0]], nn: [[-190, 0, 0], [190, 0, Math.PI]], ss: [[-190, 0, Math.PI], [190, 0, 0]],
       side: [[0, -75, 0], [0, 75, 0]] }[name];
     cfg.forEach(([x, y, a], i) => Object.assign(mags[i], mk(x, y, a)));
+    stopDemo(); state.touching = false;
     clearTrail();
     setFree(false); state.dirty = true; say('');
     simRoot.querySelectorAll('[data-preset]').forEach(b => b.setAttribute('aria-pressed', b.dataset.preset === name));
@@ -1415,6 +1596,7 @@ const TwoSim = (() => {
     return null;
   }
   canvas.addEventListener('pointerdown', e => {
+    stopDemo();
     const p = toWorld(e), h = hit(p);
     if (!h) return;
     try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
@@ -1473,7 +1655,7 @@ const TwoSim = (() => {
   preset('ns');
   select(0);
   requestAnimationFrame(tick);
-  return {};
+  return { playDemo };
 })();
 
 </script>
@@ -1483,7 +1665,7 @@ const TwoSim = (() => {
   const links = [...document.querySelectorAll('.nav-link')];
   const sims = { bar: 'sim-compass', earth: 'sim-compass', two: 'sim-two' };
   const closeSheets = () => document.querySelectorAll('.sheet').forEach(s => s.hidden = true);
-  function show(name) {
+  let show = function (name) {
     if (!sims[name]) name = 'bar';
     links.forEach(l => l.setAttribute('aria-current', l.dataset.tab === name ? 'page' : 'false'));
     for (const id of new Set(Object.values(sims))) document.getElementById(id).hidden = id !== sims[name];
@@ -1505,6 +1687,27 @@ const TwoSim = (() => {
   document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeSheets(); app.classList.remove('menu-open'); } });
   document.getElementById('menu-btn').addEventListener('click', () => app.classList.toggle('menu-open'));
   document.getElementById('scrim').addEventListener('click', () => app.classList.remove('menu-open'));
+  // the pretend-finger demo plays the first time each page is opened; "Show me how" replays it
+  const seen = new Set();
+  let current = 'bar';
+  function runDemo(name) {
+    if (name === 'two') TwoSim.playDemo(); else CompassSim.playDemo();
+  }
+  const _show = show;
+  show = name => {
+    _show(name); current = sims[name] ? name : 'bar';
+    if (!seen.has(current)) { seen.add(current); const n = current; setTimeout(() => { if (current === n) runDemo(n); }, 450); }
+  };
+  links.forEach(l => l.addEventListener('click', e => { e.preventDefault(); }));
+  document.querySelectorAll('[data-demo]').forEach(b => b.addEventListener('click', () => runDemo(current)));
+  // vibration (only phones and tablets that support it, e.g. Android)
+  window.MLAB = { vibe: true };
+  try { if (localStorage.getItem('mlab-vibe') === 'off') window.MLAB.vibe = false; } catch (_) {}
+  if ('vibrate' in navigator) {
+    const v = document.getElementById('vibe'); document.getElementById('vibe-wrap').hidden = false;
+    v.checked = window.MLAB.vibe;
+    v.addEventListener('change', () => { window.MLAB.vibe = v.checked; try { localStorage.setItem('mlab-vibe', v.checked ? 'on' : 'off'); } catch (_) {} if (v.checked) { try { navigator.vibrate(20); } catch (_) {} } });
+  }
   let start = location.hash.slice(1);
   if (!sims[start]) { try { start = localStorage.getItem('mlab-tab') || 'bar'; } catch (_) { start = 'bar'; } }
   show(start);
